@@ -31,15 +31,19 @@ The dataset consists of **1,500 unique product records** evaluated against the f
 ---
 
 ## Data Cleaning & Preparation (Excel)
-Prior to loading the data into PostgreSQL, data auditing and standardization were completed in Excel:
-* **Missing Value Imputation:** 
-  * Replaced blank categorical values (`category`, `animal`, `size`) with `"Unknown"`.
-  * Imputed missing numerical fields (`price`, `sales`) using `=MEDIAN(...)`.
-  * Filled missing `rating` values with `0` to denote an unrated state without distorting true customer review scores.
-* **Data Integrity Checks:** 
-  * Removed records missing `repeat_purchase` values and verified that values strictly contain binary flags (`0` or `1`).
-  * Enforced two-decimal-place currency formatting for `price` and `sales`.
-  * Verified that all 1,500 `product_id` values are unique and non-null.
+Prior to loading the dataset into PostgreSQL, data auditing, standardization, and missing value handling were completed in Excel:
+
+* **Primary Key Verification:** Audited `product_id` to confirm zero duplicate values and ensured no missing or blank cells existed across all 1,500 records.
+* **Categorical Standardization:** 
+  * Replaced both blank cells and entries containing `"-"` in `category` with `"Unknown"`.
+  * Audited `animal` and verified that values conformed cleanly to expected species classifications with no modifications required.
+  * Standardized casing in `size` using proper capitalization (e.g., `Small`, `Medium`, `Large`) to resolve inconsistent text entries.
+* **Numerical Imputation & Formatting:**
+  * Identified non-numeric `"unlisted"` entries in `price` and imputed them with the catalog median value of `28.065`.
+  * Formatted both `price` and `sales` to standard two-decimal-place currency precision.
+* **Ratings & Retention Audit:**
+  * Replaced all `"NA"` values in `rating` with `0` to explicitly flag unrated products.
+  * Verified that `repeat_purchase` strictly contained valid binary flags (`0` or `1`) across all rows.
 
 ---
 
@@ -70,16 +74,16 @@ SELECT
     COUNT(product_id) AS total_products, 
     ROUND(AVG(price)::NUMERIC, 2) AS avg_product_price,
     ROUND(SUM(sales)::NUMERIC, 2) AS total_revenue, 
-    ROUND(AVG(rating)::NUMERIC, 2) AS avg_rating,
+    ROUND(AVG(NULLIF(rating, 0)), 2) AS avg_rating,
     ROUND(100.0 * SUM(repeat_purchase) / COUNT(product_id), 2) AS repeat_purchase_rate_pct
 FROM pet_supplies;
 ```
 
 | Total Products | Avg Product Price | Total Revenue | Avg Rating | Repeat Purchase Rate (%) |
 | :--- | :--- | :--- | :--- | :--- |
-| 1,500 | $26.48 | $1,494,896.77 | 4.49 | 60.40% |
+| 1,500 | $29.29 | $1,494,896.77 | 4.99 | 60.40% |
 
-> **Takeaway:** The catalog generated **$1,494,896.77** across **1,500** items with an average product price of **$26.48**. The baseline repeat purchase rate is solid at **60.40%**, while the average customer rating sits at **4.49** (moderated by the unrated items scored as 0).
+> **Takeaway:** The catalog generated **$1,494,896.77** across **1,500** items with an average product price of **$29.29**. The baseline repeat purchase rate is solid at **60.40%**, while the average customer rating sits at **4.99** (excluding all 0 (Unknown) values).
 
 ---
 
@@ -97,17 +101,17 @@ GROUP BY category
 ORDER BY total_sales DESC;
 ```
 
-| Category | Total Sales | Avg Sales Per Product | Repeat Rate Pct |
+| Category | Total Sales | Avg Sales per Product | Repeat Rate Pct |
 | :--- | :--- | :--- | :--- |
-| Equipment | $348,875.24 | $942.91 | 59.73% |
-| Toys | $319,897.10 | $1,254.50 | 56.86% |
-| Food | $287,138.16 | $1,104.38 | 58.08% |
-| Medicine | $214,066.25 | $903.23 | 64.56% |
-| Housing | $175,330.31 | $772.38 | 66.96% |
-| Accessory | $121,273.44 | $962.49 | 55.56% |
-| Unknown | $28,316.27 | $1,132.65 | 56.00% |
+| Equipment | 348,875.24 | 942.91 | 59.73% |
+| Toys | 319,897.10 | 1,254.50 | 56.86% |
+| Food | 287,138.16 | 1,104.38 | 58.08% |
+| Medicine | 214,066.25 | 903.23 | 64.56% |
+| Housing | 175,330.31 | 772.38 | 66.96% |
+| Accessory | 121,273.44 | 962.49 | 55.56% |
+| Unknown | 28,316.27 | 1,132.65 | 56.00% |
 
-> **Takeaway:** Equipment is the largest overall revenue generator ($348.8K), but Toys commands the highest average sales velocity per item ($1,254.50). Conversely, essential consumable/habitat categories—Housing (66.96%) and Medicine (64.56%)—deliver the highest repeat purchase rates.
+> **Takeaway:** Equipment drives the highest total revenue ($348.8K), while Toys delivers the highest revenue per individual product listing ($1,254.50). In contrast, customer loyalty is concentrated in care and living essentials, where Housing (66.96%) and Medicine (64.56%) achieve the highest repeat purchase rates.
 
 ---
 
@@ -132,22 +136,22 @@ ORDER BY animal,
     END;
 ```
 
-| animal | size   | product_count | avg_price | avg_sales  |
-| :----- | :----- | ------------: | --------: | ---------: |
-| Bird   | Small  |            33 |    $37.20 |  $1,430.64 |
-| Bird   | Medium |            82 |    $34.22 |  $1,131.91 |
-| Bird   | Large  |            82 |    $40.92 |  $1,646.00 |
-| Cat    | Small  |           393 |    $25.81 |  $1,072.88 |
-| Cat    | Medium |           149 |    $21.30 |    $797.64 |
-| Cat    | Large  |            25 |    $29.46 |  $1,349.71 |
-| Dog    | Small  |           130 |    $29.38 |  $1,120.32 |
-| Dog    | Medium |           145 |    $25.76 |    $819.68 |
-| Dog    | Large  |            92 |    $32.77 |  $1,346.86 |
-| Fish   | Small  |           198 |    $22.05 |    $741.42 |
-| Fish   | Medium |           116 |    $17.00 |    $503.74 |
-| Fish   | Large  |            55 |    $24.98 |    $945.87 |
+| animal | size | product_count | avg_price | avg_sales |
+| :--- | :--- | :--- | :--- | :--- |
+| Bird | Small | 33 | 41.45 | 1,430.64 |
+| Bird | Medium | 82 | 36.96 | 1,131.91 |
+| Bird | Large | 82 | 44.34 | 1,646.00 |
+| Cat | Small | 393 | 28.74 | 1,072.88 |
+| Cat | Medium | 149 | 23.93 | 797.64 |
+| Cat | Large | 25 | 32.83 | 1,349.71 |
+| Dog | Small | 130 | 33.05 | 1,120.32 |
+| Dog | Medium | 145 | 27.89 | 819.68 |
+| Dog | Large | 92 | 36.43 | 1,346.86 |
+| Fish | Small | 198 | 24.18 | 741.42 |
+| Fish | Medium | 116 | 18.94 | 503.74 |
+| Fish | Large | 55 | 28.04 | 945.87 |
 
-> **Takeaway:** Cat Small is the most catalog-dense segment (393 items), but Bird products command the highest average prices and revenue across sizes (peaking at $40.92 price and $1,646.00 sales for Large). Across all species, Medium sized products consistently generate lower average sales than Small or Large items.
+> **Takeaway:** Small Cat products represent the most catalog-dense segment by far (393 products), but Bird products command the highest average price points and average sales across every size category—peaking with Large Bird products ($44.34 average price, $1,646.00 average sales). Across all four animal categories, Medium products systematically yield both the lowest average prices and the lowest average sales compared to their Small and Large counterparts.
 
 ---
 
@@ -183,20 +187,20 @@ ORDER BY animal, sales_rank;
 
 | animal | sales_rank | product_id | category | sales | rating |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Bird | 1 | 1443 | Toys | $2,255.96 | 8 |
-| Bird | 2 | 653 | Toys | $2,254.99 | 8 |
-| Bird | 3 | 295 | Toys | $2,249.40 | 4 |
-| Cat | 1 | 219 | Toys | $1,729.76 | 0 |
-| Cat | 2 | 863 | Toys | $1,724.15 | 7 |
-| Cat | 3 | 1383 | Toys | $1,723.87 | 8 |
-| Dog | 1 | 518 | Toys | $1,797.02 | 7 |
-| Dog | 2 | 280 | Toys | $1,795.77 | 5 |
-| Dog | 3 | 250 | Toys | $1,795.05 | 0 |
-| Fish | 1 | 130 | Toys | $1,307.35 | 4 |
-| Fish | 2 | 385 | Toys | $1,301.35 | 9 |
-| Fish | 3 | 900 | Toys | $1,300.55 | 9 |
+| Bird | 1 | 1443 | Toys | 2,255.96 | 8 |
+| Bird | 2 | 653 | Toys | 2,254.99 | 8 |
+| Bird | 3 | 295 | Toys | 2,249.40 | 4 |
+| Cat | 1 | 863 | Toys | 1,724.15 | 7 |
+| Cat | 2 | 1383 | Toys | 1,723.87 | 8 |
+| Cat | 3 | 1091 | Toys | 1,723.84 | 6 |
+| Dog | 1 | 518 | Toys | 1,797.02 | 7 |
+| Dog | 2 | 280 | Toys | 1,795.77 | 5 |
+| Dog | 3 | 728 | Toys | 1,793.71 | 6 |
+| Fish | 1 | 130 | Toys | 1,307.35 | 4 |
+| Fish | 2 | 385 | Toys | 1,301.35 | 9 |
+| Fish | 3 | 900 | Toys | 1,300.55 | 9 |
 
-> **Takeaway:** Toys sweeps the top 3 spots across all four animal categories. Bird toys deliver the highest peak revenue per SKU in the entire business ($2,250+), outperforming top dog and cat toys by over $450 per product. Several top-earning items maintain high sales despite unrated or low customer review scores.
+> **Takeaway:** The Toys category completely dominates the top 3 sales ranks across all four animal categories. Bird toys generate the highest peak sales per SKU ($2,249–$2,256), outpacing the top Dog and Cat toys by roughly $450 to $530 per item. High sales volume does not strongly correlate with customer satisfaction, as several top-ranking items sustain peak revenue despite lower ratings (such as Bird #3 and Fish #1, both rated 4/10).
 
 ---
 
@@ -221,12 +225,12 @@ ORDER BY MIN(rating);
 
 | rating_tier | total_items | avg_sales | repeat_purchase_pct |
 | :--- | :--- | :--- | :--- |
-| 0 (Unrated) | 150 | $1,046.32 | 58.00% |
-| Low (1-4) | 528 | $888.75 | 64.77% |
-| Mid (5-7) | 746 | $1,036.43 | 58.45% |
-| High (8-10) | 76 | $1,256.80 | 53.95% |
+| 0 (Unrated) | 150 | 1,046.32 | 58.00 |
+| Low (1-4) | 528 | 888.75 | 64.77 |
+| Mid (5-7) | 746 | 1,036.43 | 58.45 |
+| High (8-10) | 76 | 1,256.80 | 53.95 |
 
-> **Takeaway:** Lower ratings exhibit higher repeat purchase rates. Products rated 1–4 have a 64.77% repeat purchase rate, compared to 53.95% for products rated 8–10. While high-rated items achieve higher average sales ($1,256.80), their lower repeat rate indicates they are primarily durable, one-time purchases (e.g., premium cages or tanks), whereas lower-rated items likely consist of essential consumables bought repeatedly despite mixed satisfaction.
+> **Takeaway:** Customer satisfaction displays an inverse relationship with repeat purchase behavior: Low-rated products (1–4) achieve the highest repeat purchase rate at 64.77%, whereas High-rated products (8–10) yield the lowest at 53.95%. However, High-rated items generate substantially higher average sales ($1,256.80 vs. $888.75 for Low-rated), despite accounting for just ~5% of the total catalog (76 items). Products in the Mid-tier (5–7) and Unrated (0) tiers track closely in repeat rates at roughly 58%.
 
 --- 
 
@@ -234,44 +238,51 @@ ORDER BY MIN(rating);
 Calculates variance from category averages using window functions and subqueries to highlight top individual performers.
 
 ```sql
+WITH CategoryBaselines AS (
+    SELECT 
+        product_id,
+        category,
+        sales,
+        AVG(sales) OVER(PARTITION BY category) AS category_avg_sales
+    FROM pet_supplies
+)
 SELECT 
     product_id,
     category,
     sales,
-    ROUND(AVG(sales) OVER(PARTITION BY category)::NUMERIC, 2) AS category_avg_sales,
-    ROUND((sales - AVG(sales) OVER(PARTITION BY category))::NUMERIC, 2) AS variance_from_category_avg
-FROM pet_supplies
-WHERE sales > (
-    SELECT AVG(p2.sales) 
-    FROM pet_supplies p2 
-    WHERE p2.category = pet_supplies.category
-)
+    ROUND(category_avg_sales, 2) AS category_avg_sales,
+    ROUND(sales - category_avg_sales, 2) AS variance_from_category_avg
+FROM CategoryBaselines
+WHERE sales > category_avg_sales
 ORDER BY variance_from_category_avg DESC
 LIMIT 10;
 ```
 
 | product_id | category | sales | category_avg_sales | variance_from_category_avg |
 | :--- | :--- | :--- | :--- | :--- |
-| 1417 | Equipment | $1,873.47 | $1,064.17 | +$809.30 |
-| 1443 | Toys | $2,255.96 | $1,453.14 | +$802.82 |
-| 653 | Toys | $2,254.99 | $1,453.14 | +$801.85 |
-| 295 | Toys | $2,249.40 | $1,453.14 | +$796.26 |
-| 40 | Toys | $2,248.63 | $1,453.14 | +$795.49 |
-| 449 | Toys | $2,248.04 | $1,453.14 | +$794.90 |
-| 467 | Toys | $2,246.77 | $1,453.14 | +$793.63 |
-| 1105 | Toys | $2,244.67 | $1,453.14 | +$791.53 |
-| 459 | Medicine | $1,871.35 | $1,115.99 | +$755.36 |
-| 1156 | Medicine | $1,866.60 | $1,115.99 | +$750.61 |
+| 1443 | Toys | 2,255.96 | 1,254.50 | +1,001.46 |
+| 653 | Toys | 2,254.99 | 1,254.50 | +1,000.49 |
+| 295 | Toys | 2,249.40 | 1,254.50 | +994.90 |
+| 40 | Toys | 2,248.63 | 1,254.50 | +994.13 |
+| 449 | Toys | 2,248.04 | 1,254.50 | +993.54 |
+| 467 | Toys | 2,246.77 | 1,254.50 | +992.27 |
+| 1105 | Toys | 2,244.67 | 1,254.50 | +990.17 |
+| 459 | Medicine | 1,871.35 | 903.23 | +968.12 |
+| 1156 | Medicine | 1,866.60 | 903.23 | +963.37 |
+| 1417 | Equipment | 1,873.47 | 942.91 | +930.56 |
 
-> **Takeaway:** Product `1417` (Equipment) has the *highest individual margin over its peer group* (+$809.30). Furthermore, 7 of the top 10 outperformers are Toys, reinforcing Toys as the primary product line for *high-margin individual SKUs*.
+> **Takeaway:** Toys dominate catalog outperformance, capturing 7 of the top 10 spots for absolute revenue variance above category averages, led by SKU `1443` at +$1,001.46 (~80% above baseline). However, non-toy outliers demonstrate even steeper relative premiums over their peer groups: top Medicine SKUs (`459` and `1156`) more than double their category average (+107% / +$960+), while top Equipment SKU `1417` drives $1,873.47 in sales (+$930.56 / +99% over baseline).
+
 
 ### Actionable Business Recommendations
 
-1. **Scale the Bird Product Line:** Despite lower catalog representation than Cats or Dogs, Bird products generate the highest average selling prices and sales volumes across sizes. Expanding the Bird SKU catalog offers clear upside.
-2. **Cross-Sell Bundles (Toys + Consumables):** Toys drive top revenue velocity but trail in repeat purchases. Creating promotional bundles pairing popular toys with high-retention essentials (Housing and Medicine) will help increase customer lifetime value (LTV).
-3. **Product Quality Interventions on High-Repeat Items:** Products in the 1–4 rating tier account for a 64.77% repeat purchase rate. Customers are regularly repurchasing items with sub-par ratings due to necessity, presenting a major retention risk if competitors offer better quality alternatives. Prioritize quality audits and supplier reviews on high-volume products in this tier.
+1. **Expand the Bird SKU Catalog:** Despite having far fewer listings than Cats (567) or Dogs (367), Bird products generate the highest average price points ($36.96–$44.34) and average revenue per product ($1,131–$1,646) across all size tiers. Broadening the Bird catalog—especially in high-performing Large products and Toys—represents a high-margin expansion path.
 
-4. ---
+2. **Bundle High-Yield Toys with High-Repeat Categories:** Toys generate the highest revenue per listing ($1,254.50) but demonstrate below-average repeat purchase rates (56.86%). Create bundled promotions or post-purchase follow-ups that pair high-performing toys with high-retention necessity categories like Medicine (64.56% repeat rate) and recurring care supplies to convert discretionary toy buyers into recurring customers.
+
+3. **Mitigate Churn Risk on Low-Rated, High-Repeat Products:** Products rated 1–4 command the highest repeat purchase rate (64.77%) across 528 catalog items. Customers are repurchasing these items out of necessity despite low satisfaction—creating an acute vulnerability to competitor switching. Audit top-selling SKUs within the 1–4 rating tier for quality defects, supplier replacements, or packaging improvements to protect repeat revenue streams.
+
+---
 
 ## Tech Stack & Tools
 
@@ -281,5 +292,5 @@ LIMIT 10;
   * Common Table Expressions (CTEs / `WITH` queries)
   * Multi-dimensional Grouping & Aggregations (`GROUP BY`, `SUM`, `AVG`, `COUNT`)
   * Conditional Logic & Value Binning (`CASE WHEN ... THEN`)
-  * Correlated Subqueries & Type Casting (`::NUMERIC`)
+  * Type Casting (`::NUMERIC`)
 * **Data Auditing & Preprocessing:** Microsoft Excel (Imputation, Data Cleaning, Standardization)
